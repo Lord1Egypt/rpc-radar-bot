@@ -32,6 +32,7 @@ Send a command to the bot and get live data from public RPC nodes:
 | `/node <chain>` | Full live stats for one chain | `/node ethereum` |
 | `/ping <chain>` | Latency test for a single node | `/ping base` |
 | `/balance <0x...>` | ETH balance across all 24 EVM chains | `/balance 0xd8dA6BF2...` |
+| `/top` | Gas price ranking — cheapest & most expensive EVM chains | `/top` |
 | `/chains` | Browse all 30 supported chains | `/chains` |
 | `/search <name>` | Find a chain by name or symbol | `/search arb` |
 
@@ -130,6 +131,27 @@ You can use short names with `/node` and `/ping`:
 
 🟢 Online — 39ms (Fast)
 🌐 https://arbitrum-one-rpc.publicnode.com
+```
+
+### `/top` — Gas price ranking
+```
+⛽ Gas Price Ranking — All EVM Chains
+
+🟢 Cheapest (lowest gas):
+1. ⚡ Sonic      — 0.0010 Gwei 🟢
+2. 🟣 Polygon    — 0.0310 Gwei 🟢
+3. 🔷 Base       — 0.0012 Gwei 🟢
+4. 🌀 Arbitrum   — 0.0100 Gwei 🟢
+5. 🌊 Soneium    — 0.0010 Gwei 🟢
+
+🔴 Most expensive (highest gas):
+1. 🔵 Ethereum   — 4.82 Gwei  🟢
+2. 💓 PulseChain — 3.12 Gwei  🟡
+3. 🐻 Berachain  — 1.80 Gwei  🔴
+4. 🦉 Gnosis     — 1.20 Gwei  🟢
+5. 🌕 Moonbeam   — 0.85 Gwei  🟢
+
+Queried 24/24 chains — publicnode.com
 ```
 
 ### `/balance 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` — Multi-chain balance

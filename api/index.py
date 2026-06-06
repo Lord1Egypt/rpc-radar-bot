@@ -605,6 +605,61 @@ def cmd_search(chat_id, query):
     send(chat_id, "\n".join(lines))
 
 
+def cmd_top(chat_id):
+    action(chat_id)
+    results = {}
+
+    def fetch_gas(key, chain):
+        t0 = time.time()
+        try:
+            gas_hex = _evm_rpc(chain["url"], "eth_gasPrice", timeout=5)
+            gwei = int(gas_hex, 16) / 1e9
+            ms   = int((time.time() - t0) * 1000)
+            return key, {"ok": True, "gwei": gwei, "ms": ms}
+        except Exception:
+            return key, {"ok": False, "gwei": 0.0, "ms": int((time.time()-t0)*1000)}
+
+    with ThreadPoolExecutor(max_workers=len(EVM_CHAINS)) as ex:
+        futures = [ex.submit(fetch_gas, k, v) for k, v in EVM_CHAINS.items()]
+        for f in as_completed(futures, timeout=12):
+            try:
+                k, r = f.result()
+                results[k] = r
+            except Exception:
+                pass
+
+    online = [(k, r) for k, r in results.items() if r["ok"]]
+    online.sort(key=lambda x: x[1]["gwei"])   # cheapest first
+
+    lines = ["⛽ *Gas Price Ranking — All EVM Chains*\n"]
+
+    cheapest = online[:5]
+    priciest = list(reversed(online[-5:])) if len(online) > 5 else []
+
+    if cheapest:
+        lines.append("🟢 *Cheapest (lowest gas):*")
+        for i, (key, r) in enumerate(cheapest, 1):
+            chain = EVM_CHAINS[key]
+            badge = ms_badge(r["ms"])
+            gwei_str = f"{r['gwei']:.4f}" if r["gwei"] < 10 else f"{r['gwei']:.2f}"
+            lines.append(f"`{i}.` {chain['emoji']} {chain['name']} — `{gwei_str} Gwei` {badge}")
+
+    if priciest:
+        lines.append("\n🔴 *Most expensive (highest gas):*")
+        for i, (key, r) in enumerate(priciest, 1):
+            chain = EVM_CHAINS[key]
+            badge = ms_badge(r["ms"])
+            gwei_str = f"{r['gwei']:.4f}" if r["gwei"] < 10 else f"{r['gwei']:.2f}"
+            lines.append(f"`{i}.` {chain['emoji']} {chain['name']} — `{gwei_str} Gwei` {badge}")
+
+    offline = [EVM_CHAINS[k]["name"] for k, r in results.items() if not r["ok"]]
+    if offline:
+        lines.append(f"\n_Offline: {', '.join(offline)}_")
+
+    lines.append(f"\n_Queried {len(online)}/{len(EVM_CHAINS)} chains — [publicnode.com](https://publicnode.com)_")
+    send(chat_id, "\n".join(lines))
+
+
 # ── Help text ─────────────────────────────────────────────────────────────────
 HELP_TEXT = (
     f"{BOT_EMOJI} *RPC Radar Bot — Commands*\n\n"
@@ -614,6 +669,7 @@ HELP_TEXT = (
     "`/node <chain>` — Full live stats for one chain\n"
     "`/ping <chain>` — Latency test for one node\n"
     "`/balance <0x...>` — ETH balance across all 24 EVM chains\n"
+    "`/top` — Gas price ranking: cheapest & most expensive chains\n"
     "`/chains` — Browse all 30 supported chains\n"
     "`/search <name>` — Find a chain by name or symbol\n\n"
     "📖 *Examples:*\n"
@@ -623,6 +679,7 @@ HELP_TEXT = (
     "• `/node ton` — TON masterchain seqno\n"
     "• `/ping base` — Ping Base RPC\n"
     "• `/balance 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` — Vitalik's balances\n"
+    "• `/top` — Which chain has the cheapest gas right now?\n"
     "• `/search arb` — Find Arbitrum\n\n"
     "💡 *Shortcuts:* `eth`, `bnb`, `poly`, `arb`, `op`, `avax`, `sol`, `btc`, `atom`, `strk`\n\n"
     f"🔗 [publicnode.com](https://publicnode.com) — Free public RPC nodes, no key required"
@@ -687,6 +744,8 @@ def process(update):
                     "↑ Checks Vitalik's ETH balance across all 24 EVM chains")
             else:
                 cmd_balance(chat_id, arg)
+        elif cmd == "top":
+            cmd_top(chat_id)
         elif cmd == "search":
             if not arg:
                 send(chat_id, "❌ Usage: `/search <name>`\n\nExample: `/search arb`  or  `/search sol`")
