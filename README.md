@@ -3,7 +3,7 @@
 > Monitor **30 public blockchain RPC nodes** in real-time — directly in Telegram.
 > No API keys required. Powered by [publicnode.com](https://publicnode.com) + [TON Hub](https://tonhubapi.com).
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Lord1Egypt/rpc-radar-bot)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Lord1Egypt/rpc-radar-bot&env=BOT_TOKEN&envDescription[BOT_TOKEN]=Telegram%20bot%20token%20from%20%40BotFather&envLink[BOT_TOKEN]=https%3A%2F%2Ft.me%2FBotFather)
 
 ---
 
@@ -242,7 +242,7 @@ Non-EVM Chains (6):
 3. Copy the bot token
 
 ### 2. Deploy
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Lord1Egypt/rpc-radar-bot)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Lord1Egypt/rpc-radar-bot&env=BOT_TOKEN&envDescription[BOT_TOKEN]=Telegram%20bot%20token%20from%20%40BotFather&envLink[BOT_TOKEN]=https%3A%2F%2Ft.me%2FBotFather)
 
 Or manually:
 ```bash
