@@ -1,10 +1,19 @@
 import os
 import time
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
+
+# ── Resilient HTTP session (retry once on 429/5xx) ───────────────────────────
+_session = requests.Session()
+_session.mount("https://", HTTPAdapter(max_retries=Retry(
+    total=1, backoff_factor=0.2, status_forcelist=[429, 500, 502, 503],
+    allowed_methods=["GET", "POST"]
+)))
 
 # ── Config ────────────────────────────────────────────────────────────────────
 TOKEN    = os.environ.get("BOT_TOKEN", "")
@@ -90,18 +99,18 @@ def resolve_chain(name):
 
 # ── Telegram helpers ──────────────────────────────────────────────────────────
 def send(chat_id, text, parse_mode="Markdown"):
-    requests.post(f"{TG}/sendMessage", json={
+    _session.post(f"{TG}/sendMessage", json={
         "chat_id": chat_id, "text": text,
         "parse_mode": parse_mode, "disable_web_page_preview": True,
     }, timeout=10)
 
 def action(chat_id, act="typing"):
-    requests.post(f"{TG}/sendChatAction",
+    _session.post(f"{TG}/sendChatAction",
         json={"chat_id": chat_id, "action": act}, timeout=5)
 
 # ── RPC callers ───────────────────────────────────────────────────────────────
 def _evm_rpc(url, method, params=None, timeout=6):
-    r = requests.post(url, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params or []}, timeout=timeout)
+    r = _session.post(url, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params or []}, timeout=timeout)
     d = r.json()
     if "error" in d:
         raise Exception(d["error"].get("message", str(d["error"])))
@@ -128,23 +137,23 @@ def fetch_evm_full(chain, timeout=6):
 
 def fetch_solana(chain, timeout=6):
     t0 = time.time()
-    r = requests.post(chain["url"], json={"jsonrpc": "2.0", "id": 1, "method": "getBlockHeight", "params": []}, timeout=timeout)
+    r = _session.post(chain["url"], json={"jsonrpc": "2.0", "id": 1, "method": "getBlockHeight", "params": []}, timeout=timeout)
     height = r.json()["result"]
-    r2 = requests.post(chain["url"], json={"jsonrpc": "2.0", "id": 2, "method": "getVersion", "params": []}, timeout=timeout)
+    r2 = _session.post(chain["url"], json={"jsonrpc": "2.0", "id": 2, "method": "getVersion", "params": []}, timeout=timeout)
     ver = r2.json()["result"].get("solana-core", "?")
     ms = int((time.time() - t0) * 1000)
     return height, ver, ms
 
 def fetch_bitcoin(chain, timeout=6):
     t0 = time.time()
-    r = requests.post(chain["url"], json={"jsonrpc": "1.0", "id": 1, "method": "getblockchaininfo", "params": []}, timeout=timeout)
+    r = _session.post(chain["url"], json={"jsonrpc": "1.0", "id": 1, "method": "getblockchaininfo", "params": []}, timeout=timeout)
     d = r.json()["result"]
     ms = int((time.time() - t0) * 1000)
     return d["blocks"], d.get("difficulty", 0), ms
 
 def fetch_ton(chain, timeout=6):
     t0 = time.time()
-    r = requests.get(f"{chain['url']}/block/latest", timeout=timeout)
+    r = _session.get(f"{chain['url']}/block/latest", timeout=timeout)
     d = r.json()
     seqno = d["last"]["seqno"]
     ms = int((time.time() - t0) * 1000)
@@ -152,21 +161,21 @@ def fetch_ton(chain, timeout=6):
 
 def fetch_starknet(chain, timeout=6):
     t0 = time.time()
-    r = requests.post(chain["url"], json={"jsonrpc": "2.0", "id": 1, "method": "starknet_blockNumber", "params": []}, timeout=timeout)
+    r = _session.post(chain["url"], json={"jsonrpc": "2.0", "id": 1, "method": "starknet_blockNumber", "params": []}, timeout=timeout)
     block = r.json()["result"]
     ms = int((time.time() - t0) * 1000)
     return block, ms
 
 def fetch_sui(chain, timeout=6):
     t0 = time.time()
-    r = requests.post(chain["url"], json={"jsonrpc": "2.0", "id": 1, "method": "sui_getLatestCheckpointSequenceNumber", "params": []}, timeout=timeout)
+    r = _session.post(chain["url"], json={"jsonrpc": "2.0", "id": 1, "method": "sui_getLatestCheckpointSequenceNumber", "params": []}, timeout=timeout)
     checkpoint = int(r.json()["result"])
     ms = int((time.time() - t0) * 1000)
     return checkpoint, ms
 
 def fetch_cosmos(chain, timeout=6):
     t0 = time.time()
-    r = requests.get(f"{chain['url']}/cosmos/base/tendermint/v1beta1/blocks/latest", timeout=timeout)
+    r = _session.get(f"{chain['url']}/cosmos/base/tendermint/v1beta1/blocks/latest", timeout=timeout)
     h = r.json()["block"]["header"]
     height = int(h["height"])
     ms = int((time.time() - t0) * 1000)
@@ -177,22 +186,22 @@ def fetch_non_evm_quick(key, chain, timeout=5):
     try:
         t = chain.get("type", "")
         if t == "solana":
-            r = requests.post(chain["url"], json={"jsonrpc": "2.0", "id": 1, "method": "getBlockHeight", "params": []}, timeout=timeout)
+            r = _session.post(chain["url"], json={"jsonrpc": "2.0", "id": 1, "method": "getBlockHeight", "params": []}, timeout=timeout)
             val = r.json()["result"]
         elif t == "bitcoin":
-            r = requests.post(chain["url"], json={"jsonrpc": "1.0", "id": 1, "method": "getblockcount", "params": []}, timeout=timeout)
+            r = _session.post(chain["url"], json={"jsonrpc": "1.0", "id": 1, "method": "getblockcount", "params": []}, timeout=timeout)
             val = r.json()["result"]
         elif t == "ton":
-            r = requests.get(f"{chain['url']}/block/latest", timeout=timeout)
+            r = _session.get(f"{chain['url']}/block/latest", timeout=timeout)
             val = r.json()["last"]["seqno"]
         elif t == "starknet":
-            r = requests.post(chain["url"], json={"jsonrpc": "2.0", "id": 1, "method": "starknet_blockNumber", "params": []}, timeout=timeout)
+            r = _session.post(chain["url"], json={"jsonrpc": "2.0", "id": 1, "method": "starknet_blockNumber", "params": []}, timeout=timeout)
             val = r.json()["result"]
         elif t == "sui":
-            r = requests.post(chain["url"], json={"jsonrpc": "2.0", "id": 1, "method": "sui_getLatestCheckpointSequenceNumber", "params": []}, timeout=timeout)
+            r = _session.post(chain["url"], json={"jsonrpc": "2.0", "id": 1, "method": "sui_getLatestCheckpointSequenceNumber", "params": []}, timeout=timeout)
             val = int(r.json()["result"])
         elif t == "cosmos":
-            r = requests.get(f"{chain['url']}/cosmos/base/tendermint/v1beta1/blocks/latest", timeout=timeout)
+            r = _session.get(f"{chain['url']}/cosmos/base/tendermint/v1beta1/blocks/latest", timeout=timeout)
             val = int(r.json()["block"]["header"]["height"])
         else:
             val = None
@@ -305,7 +314,7 @@ def cmd_status(chat_id):
     with ThreadPoolExecutor(max_workers=len(ALL_CHAINS)) as ex:
         evm_futures = [ex.submit(_evm, item) for item in EVM_CHAINS.items()]
         l1_futures  = [ex.submit(_l1,  item) for item in NON_EVM_CHAINS.items()]
-        for f in as_completed(evm_futures + l1_futures, timeout=12):
+        for f in as_completed(evm_futures + l1_futures, timeout=25):
             try:
                 k, r = f.result()
                 if k in EVM_CHAINS:
@@ -315,30 +324,97 @@ def cmd_status(chat_id):
             except Exception:
                 pass
 
-    lines = ["🔍 *RPC Status — All Chains*\n"]
-    lines.append("*EVM Chains:*")
-    evm_line = ""
+    # Categorise EVM by latency
+    fast, ok_ms, slow, down = [], [], [], []
     for key, chain in EVM_CHAINS.items():
-        r = evm_results.get(key, {"ok": False})
-        icon = "✅" if r.get("ok") else "❌"
-        evm_line += f"{icon}{chain['emoji']}{chain['name']}  "
-        if len(evm_line) > 120:
-            lines.append(evm_line.strip())
-            evm_line = ""
-    if evm_line.strip():
-        lines.append(evm_line.strip())
+        r = evm_results.get(key, {"ok": False, "ms": 0})
+        name = f"{chain['emoji']}{chain['name']}"
+        if not r.get("ok"):
+            down.append(name)
+        elif r["ms"] < 200:
+            fast.append(name)
+        elif r["ms"] < 600:
+            ok_ms.append(name)
+        else:
+            slow.append(name)
 
-    lines.append("\n*Non-EVM Chains:*")
+    lines = ["🔍 *RPC Status — All 30 Chains*\n"]
+    lines.append("*EVM Chains (24):*")
+    if fast:  lines.append(f"🟢 Fast:  {', '.join(fast)}")
+    if ok_ms: lines.append(f"🟡 OK:    {', '.join(ok_ms)}")
+    if slow:  lines.append(f"🔴 Slow:  {', '.join(slow)}")
+    if down:  lines.append(f"❌ Down:  {', '.join(down)}")
+
+    lines.append("\n*Non-EVM Chains (6):*")
     for key, chain in NON_EVM_CHAINS.items():
-        r = l1_results.get(key, {"ok": False})
-        icon = "✅" if r.get("ok") else "❌"
-        lines.append(f"{icon} {chain['emoji']} {chain['name']}")
+        r = l1_results.get(key, {"ok": False, "ms": 0})
+        if r.get("ok"):
+            badge = ms_badge(r["ms"])
+            lines.append(f"{badge} {chain['emoji']} {chain['name']} — `{r['ms']}ms`")
+        else:
+            lines.append(f"❌ {chain['emoji']} {chain['name']} — offline")
 
     evm_ok = sum(1 for r in evm_results.values() if r.get("ok"))
     l1_ok  = sum(1 for r in l1_results.values()  if r.get("ok"))
     total  = evm_ok + l1_ok
-    total_chains = len(EVM_CHAINS) + len(NON_EVM_CHAINS)
-    lines.append(f"\n*{total}/{total_chains} nodes online*")
+    lines.append(f"\n*{total}/30 nodes online*")
+    send(chat_id, "\n".join(lines))
+
+
+def cmd_balance(chat_id, addr):
+    action(chat_id)
+    addr = addr.strip().lower()
+    if not addr.startswith("0x") or len(addr) != 42:
+        send(chat_id,
+            "❌ `/balance` checks EVM balances — needs a `0x` address (42 chars).\n\n"
+            "📖 *Example:*\n"
+            "`/balance 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` — Vitalik's address")
+        return
+
+    results = {}
+    def fetch_bal(key, chain):
+        t0 = time.time()
+        try:
+            r = _session.post(chain["url"],
+                json={"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":[addr,"latest"]},
+                timeout=5)
+            bal = int(r.json()["result"], 16) / 1e18
+            ms  = int((time.time() - t0) * 1000)
+            return key, {"ok": True, "bal": bal, "ms": ms}
+        except Exception:
+            return key, {"ok": False, "bal": 0.0, "ms": int((time.time()-t0)*1000)}
+
+    with ThreadPoolExecutor(max_workers=len(EVM_CHAINS)) as ex:
+        futures = [ex.submit(fetch_bal, k, v) for k, v in EVM_CHAINS.items()]
+        for f in as_completed(futures, timeout=12):
+            try:
+                k, r = f.result()
+                results[k] = r
+            except Exception:
+                pass
+
+    has_funds = [
+        (key, EVM_CHAINS[key], r["bal"])
+        for key, r in results.items()
+        if r.get("ok") and r["bal"] > 0.000001
+    ]
+    has_funds.sort(key=lambda x: -x[2])
+
+    short_addr = f"{addr[:8]}…{addr[-4:]}"
+    lines = [f"💰 *Multi-Chain Balance*\n\n📬 `{addr}`\n"]
+
+    if has_funds:
+        lines.append(f"*Found on {len(has_funds)} chain(s):*")
+        for key, chain, bal in has_funds:
+            badge = ms_badge(results[key]["ms"])
+            lines.append(f"{badge} {chain['emoji']} {chain['name']}: `{bal:.6f} {chain['symbol']}`")
+    else:
+        lines.append("_No EVM balance found on any of the 24 chains._")
+
+    zero_chains = [EVM_CHAINS[k]["name"] for k, r in results.items() if r.get("ok") and r["bal"] <= 0.000001]
+    if zero_chains and has_funds:
+        lines.append(f"\n_Zero on: {', '.join(zero_chains[:6])}{'…' if len(zero_chains) > 6 else ''}_")
+
     send(chat_id, "\n".join(lines))
 
 
@@ -477,13 +553,13 @@ def cmd_ping(chat_id, arg):
         if key in EVM_CHAINS:
             _evm_rpc(url, "eth_blockNumber", timeout=6)
         elif chain.get("type") == "ton":
-            requests.get(f"{url}/block/latest", timeout=6)
+            _session.get(f"{url}/block/latest", timeout=6)
         elif chain.get("type") == "cosmos":
-            requests.get(f"{url}/cosmos/base/tendermint/v1beta1/blocks/latest", timeout=6)
+            _session.get(f"{url}/cosmos/base/tendermint/v1beta1/blocks/latest", timeout=6)
         elif chain.get("type") == "bitcoin":
-            requests.post(url, json={"jsonrpc":"1.0","id":1,"method":"getblockcount","params":[]}, timeout=6)
+            _session.post(url, json={"jsonrpc":"1.0","id":1,"method":"getblockcount","params":[]}, timeout=6)
         else:
-            requests.post(url, json={"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}, timeout=6)
+            _session.post(url, json={"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}, timeout=6)
         ms = int((time.time() - t0) * 1000)
         badge = ms_badge(ms)
         speed = "Fast" if ms < 200 else ("OK" if ms < 600 else "Slow")
@@ -533,19 +609,20 @@ def cmd_search(chat_id, query):
 HELP_TEXT = (
     f"{BOT_EMOJI} *RPC Radar Bot — Commands*\n\n"
     "`/evm` — Live block heights for all 24 EVM chains\n"
-    "`/l1` — Non-EVM chains: Solana, Bitcoin, TON, Starknet, Sui, Cosmos\n"
-    "`/status` — Quick health check (✅/❌) for all 30 chains\n"
+    "`/l1` — Non-EVM: Solana, Bitcoin, TON, Starknet, Sui, Cosmos\n"
+    "`/status` — Health check (✅/❌ + latency) for all 30 chains\n"
     "`/node <chain>` — Full live stats for one chain\n"
     "`/ping <chain>` — Latency test for one node\n"
+    "`/balance <0x...>` — ETH balance across all 24 EVM chains\n"
     "`/chains` — Browse all 30 supported chains\n"
     "`/search <name>` — Find a chain by name or symbol\n\n"
     "📖 *Examples:*\n"
     "• `/node ethereum` — Ethereum RPC stats\n"
-    "• `/node bnb` — BNB Chain\n"
     "• `/node solana` — Solana height + version\n"
     "• `/node bitcoin` — Bitcoin block height\n"
     "• `/node ton` — TON masterchain seqno\n"
     "• `/ping base` — Ping Base RPC\n"
+    "• `/balance 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` — Vitalik's balances\n"
     "• `/search arb` — Find Arbitrum\n\n"
     "💡 *Shortcuts:* `eth`, `bnb`, `poly`, `arb`, `op`, `avax`, `sol`, `btc`, `atom`, `strk`\n\n"
     f"🔗 [publicnode.com](https://publicnode.com) — Free public RPC nodes, no key required"
@@ -601,6 +678,15 @@ def process(update):
                     "• `/ping ethereum`\n• `/ping solana`\n• `/ping arbitrum`")
             else:
                 cmd_ping(chat_id, arg)
+        elif cmd == "balance":
+            if not arg:
+                send(chat_id,
+                    "❌ Usage: `/balance <0x...>`\n\n"
+                    "📖 *Example:*\n"
+                    "`/balance 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045`\n"
+                    "↑ Checks Vitalik's ETH balance across all 24 EVM chains")
+            else:
+                cmd_balance(chat_id, arg)
         elif cmd == "search":
             if not arg:
                 send(chat_id, "❌ Usage: `/search <name>`\n\nExample: `/search arb`  or  `/search sol`")
@@ -730,11 +816,11 @@ def setup():
     wh = f"https://{host}/webhook"
     try:
         if action_type == "set":
-            r = requests.get(f"{TG}/setWebhook", params={"url": wh}, timeout=10).json()
+            r = _session.get(f"{TG}/setWebhook", params={"url": wh}, timeout=10).json()
             return jsonify({"ok": r.get("ok", False),
                 "message": f"Webhook set to {wh}" if r.get("ok") else str(r.get("description", r))})
         elif action_type == "info":
-            r = requests.get(f"{TG}/getWebhookInfo", timeout=10).json()
+            r = _session.get(f"{TG}/getWebhookInfo", timeout=10).json()
             info = r.get("result", {})
             return jsonify({"ok": True,
                 "message": f"URL: {info.get('url','none')} | Pending: {info.get('pending_update_count',0)}"})
