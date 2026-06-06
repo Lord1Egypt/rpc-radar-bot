@@ -31,6 +31,7 @@ Send a command to the bot and get live data from public RPC nodes:
 | `/status` | Quick ✅/❌ health check for all 30 chains | `/status` |
 | `/node <chain>` | Full live stats for one chain | `/node ethereum` |
 | `/ping <chain>` | Latency test for a single node | `/ping base` |
+| `/balance <0x...>` | ETH balance across all 24 EVM chains | `/balance 0xd8dA6BF2...` |
 | `/chains` | Browse all 30 supported chains | `/chains` |
 | `/search <name>` | Find a chain by name or symbol | `/search arb` |
 
@@ -131,23 +132,38 @@ You can use short names with `/node` and `/ping`:
 🌐 https://arbitrum-one-rpc.publicnode.com
 ```
 
+### `/balance 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` — Multi-chain balance
+```
+💰 Multi-Chain Balance
+
+📬 0xd8da6bf26964af9d7eed9e03e53415d37aa96045
+
+Found on 3 chain(s):
+🟢 🔵 Ethereum: 1234.567890 ETH
+🟢 🔷 Base:     0.123456 ETH
+🟡 🟣 Polygon:  0.001234 MATIC
+
+Zero on: BNB Chain, Arbitrum, Optimism…
+```
+
 ### `/status` — All nodes health
 ```
-🔍 RPC Status — All Chains
+🔍 RPC Status — All 30 Chains
 
-EVM Chains:
-✅🔵Ethereum  ✅🟡BNB Chain  ✅🟣Polygon  ✅🔷Base  ✅🌀Arbitrum
-✅🔴Optimism  ✅🔺Avalanche  ✅⬛Linea   ✅📜Scroll  ✅💥Blast ...
+EVM Chains (24):
+🟢 Fast:  🔵Ethereum, 🟡BNB Chain, 🟣Polygon, 🔷Base, 🌀Arbitrum, 🔴Optimism
+🟡 OK:    🔺Avalanche, ⬛Linea, 📜Scroll, 💥Blast, 🌿Celo, ⚙️Mantle
+🔴 Slow:  🐻Berachain
 
-Non-EVM Chains:
-✅ 🟣 Solana
-✅ 🟠 Bitcoin
-✅ 💎 TON
-✅ ⭐ Starknet
-✅ 💧 Sui
-✅ ⚛️ Cosmos
+Non-EVM Chains (6):
+🟢 🟣 Solana — 41ms
+🟢 🟠 Bitcoin — 48ms
+🟢 💎 TON — 55ms
+🟢 ⭐ Starknet — 63ms
+🟢 💧 Sui — 59ms
+🟢 ⚛️ Cosmos — 71ms
 
-30/30 nodes online
+29/30 nodes online
 ```
 
 ---
